@@ -1,8 +1,4 @@
-# Borrador de plan técnico — O.N.E. E.Y.E. M.O.N.S.T.E.R.
-
-> Estado: **borrador para revisión**. No implica que las fases estén ejecutadas ni modifica todavía el repositorio.
->
-> Este documento concreta las decisiones debatidas sobre datasets, estructuras de datos y clases. Tras su aprobación se redactarán los specs técnicos y después comenzará la implementación por fases verificadas.
+# Plan técnico — O.N.E. E.Y.E. M.O.N.S.T.E.R.
 
 ## 1. Resumen sencillo del producto
 
@@ -45,44 +41,32 @@ El uso del histórico meteorológico municipal limita el periodo integrado a par
 
 ### 3.1 Flujo de preparación y entrenamiento
 
-```text
-Archivos mensuales de tráfico M30
-              +
-Catálogo de puntos de medida
-              ↓
-Normalización, filtrado y agregación horaria
-              +
-Histórico meteorológico municipal
-              +
-Open-Meteo histórico complementario
-              ↓
-Dataset horario integrado
-              ↓
-División cronológica train / validation / test
-              ↓
-Etiquetas y features ajustadas solo con train
-              ↓
-Clasificador + regresor
-              ↓
-Evaluación y artefacto serializado con metadatos
+```mermaid
+flowchart TD
+    A["Archivos mensuales de tráfico M30"] --> C["Normalización, filtrado<br/>y agregación horaria"]
+    B["Catálogo de puntos de medida"] --> C
+    D["Histórico meteorológico municipal"] --> F["Dataset horario integrado"]
+    E["Open-Meteo histórico complementario"] --> F
+    C --> F
+    F --> G["División cronológica<br/>train / validation / test"]
+    G --> H["Etiquetas y features<br/>con ajustes solo sobre train"]
+    H --> I["Clasificador y regresor"]
+    I --> J["Evaluación independiente"]
+    J --> K["Artefacto serializado<br/>con modelos y metadatos"]
 ```
 
 ### 3.2 Flujo de consulta futura
 
-```text
-TUI: sensor + fecha + franja horaria
-                ↓
-       TrafficPredictionService
-                ↓
-Calendario + catálogo del sensor + previsión Open-Meteo
-                ↓
-Pipeline de features guardado con el modelo
-                ↓
-          TrafficPredictor
-                ↓
-Estado + probabilidades + demora min/km + avisos
-                ↓
-               TUI
+```mermaid
+flowchart TD
+    A["Sensor + fecha + franja horaria"] --> B["TrafficPredictionService"]
+    C["Catálogo del sensor"] --> B
+    D["Calendario local"] --> B
+    E["Previsión Open-Meteo<br/>mediante caché"] --> B
+    B --> F["Pipeline de features<br/>guardado con el modelo"]
+    F --> G["TrafficPredictor"]
+    G --> H["Estado + probabilidades<br/>+ demora min/km + avisos"]
+    H --> I["Presentación en la TUI"]
 ```
 
 La TUI nunca llamará directamente al dataset, a Open-Meteo ni a los estimadores.
@@ -91,56 +75,66 @@ La TUI nunca llamará directamente al dataset, a Open-Meteo ni a los estimadores
 
 ### 4.1 Medidas de tráfico normalizadas
 
-| Campo interno | Origen | Significado |
-|---|---|---|
-| `sensor_id` | `id` / `idelem` | Identificador estable del punto de medida. |
-| `observed_at` | `fecha` | Fecha y hora oficial de Madrid, convertida a fecha-hora con zona. |
-| `intensity_vph` | `intensidad` | Vehículos/hora informados para el periodo de 15 minutos. |
-| `occupancy_pct` | `ocupacion` | Ocupación porcentual. |
-| `road_load` | `carga` | Carga de la vía entre 0 y 100 cuando el dato es válido. |
-| `avg_speed_kmh` | `vmed` | Velocidad media en km/h para M30. |
-| `quality_status` | `error` | Calidad; solo se acepta `N`. |
-| `integration_samples` | `periodo_integracion` | Muestras integradas; útil para control de calidad. |
+Estas columnas pertenecen a un `DataFrame`; no definen una instancia por cada medición.
+
+| Campo interno | Tipo | Unidad | Nulo | Origen | Significado |
+|---|---|---|---|---|---|
+| `sensor_id` | `int32` | — | No | `id` / `idelem` | Identificador estable del punto de medida. |
+| `observed_at` | `datetime64[ns, Europe/Madrid]` | fecha-hora | No | `fecha` | Fecha y hora oficial de Madrid, convertida a fecha-hora con zona. |
+| `intensity_vph` | `float32` | vehículos/hora | Sí | `intensidad` | Intensidad informada para el periodo de 15 minutos. |
+| `occupancy_pct` | `float32` | % | Sí | `ocupacion` | Ocupación porcentual. |
+| `road_load` | `float32` | 0–100 | Sí | `carga` | Grado de uso de la vía. |
+| `avg_speed_kmh` | `float32` | km/h | Sí | `vmed` | Velocidad media para sensores M30. |
+| `quality_status` | `category` | — | No | `error` | Calidad; solo se acepta `N` en entrenamiento. |
+| `integration_samples` | `Int16` | muestras | Sí | `periodo_integracion` | Muestras integradas, útil para control de calidad. |
 
 `intensity_vph` ya es una tasa en vehículos/hora. Al agregar cuatro lecturas de 15 minutos se calcula una media, nunca una suma.
 
 ### 4.2 Catálogo de puntos de medida
 
-```text
-sensor_id
-central_code
-sensor_name
-utm_x
-utm_y
-latitude       # si se calcula para consultas geográficas
-longitude      # si se calcula para consultas geográficas
-```
+| Campo | Tipo | Unidad | Nulo | Significado |
+|---|---|---|---|---|
+| `sensor_id` | `int32` | — | No | Identificador permanente e índice del catálogo. |
+| `central_code` | `string` | — | Sí | Equivalente a `cod_cent`, cuando esté disponible. |
+| `sensor_name` | `string` | — | No | Nombre legible del punto de medida. |
+| `utm_x` | `float64` | m UTM | Sí | Coordenada X del catálogo. |
+| `utm_y` | `float64` | m UTM | Sí | Coordenada Y del catálogo. |
+| `latitude` | `float64` | grados | Sí | Latitud derivada, si se calcula para consultas geográficas. |
+| `longitude` | `float64` | grados | Sí | Longitud derivada, si se calcula para consultas geográficas. |
 
 No se presuponen carriles, longitudes oficiales ni velocidades límite que no proporcione la fuente.
 
 ### 4.3 Dataset horario de modelado
 
-```text
-sensor_id
-hour_utc
-local_datetime
-intensity_vph
-occupancy_pct
-road_load
-avg_speed_kmh
-valid_15min_observations
+El dataset integrado se describe mejor como dos contratos tabulares que se unen por `sensor_id` y `hour_utc`.
 
-temperature_c
-precipitation_mm
-rain_mm
-visibility_m
-wind_speed_kmh
-weather_code
-weather_source
-source_location_id
-weather_match_distance_minutes
-station_distance_km
-```
+**Tráfico y cobertura por hora:**
+
+| Campo | Tipo | Unidad | Nulo | Significado |
+|---|---|---|---|---|
+| `sensor_id` | `int32` | — | No | Punto de medida M30. |
+| `hour_utc` | `datetime64[ns, UTC]` | fecha-hora | No | Hora en UTC, clave temporal inequívoca. |
+| `local_datetime` | `datetime64[ns, Europe/Madrid]` | fecha-hora | No | Hora local para calendario y presentación. |
+| `intensity_vph` | `float32` | vehículos/hora | Sí | Media horaria de la intensidad. |
+| `occupancy_pct` | `float32` | % | Sí | Media horaria de la ocupación. |
+| `road_load` | `float32` | 0–100 | Sí | Media horaria de la carga; base de la etiqueta. |
+| `avg_speed_kmh` | `float32` | km/h | Sí | Media horaria de la velocidad; base de la demora. |
+| `valid_15min_observations` | `Int8` | observaciones | No | Cuartos de hora válidos considerados. |
+
+**Meteorología y trazabilidad del cruce:**
+
+| Campo | Tipo | Unidad | Nulo | Significado |
+|---|---|---|---|---|
+| `temperature_c` | `float32` | °C | Sí | Temperatura horaria. |
+| `precipitation_mm` | `float32` | mm | Sí | Precipitación horaria. |
+| `rain_mm` | `float32` | mm | Sí | Lluvia horaria, con semántica propia de Open-Meteo. |
+| `visibility_m` | `float32` | m | Sí | Visibilidad horaria. |
+| `wind_speed_kmh` | `float32` | km/h | Sí | Velocidad del viento normalizada. |
+| `weather_code` | `Int16` | código WMO | Sí | Código meteorológico categórico. |
+| `weather_source` | `category` | — | No | `madrid_municipal` u `open_meteo`. |
+| `source_location_id` | `string` | — | Sí | Estación o ubicación de origen. |
+| `weather_match_distance_minutes` | `Int16` | min | Sí | Separación temporal del cruce. |
+| `station_distance_km` | `float32` | km | Sí | Distancia entre sensor y estación. |
 
 Reglas esenciales:
 
@@ -155,29 +149,66 @@ Reglas esenciales:
 
 ### 4.4 Objetos pequeños de consulta y resultado
 
-```text
-ForecastRequest
-- sensor_id
-- start_at
-- end_at
+Los DTOs sí serán `dataclasses` tipadas. El siguiente bloque contiene las importaciones compartidas por los ejemplos; las estructuras se muestran por separado.
 
-ForecastPoint
-- timestamp
-- traffic_state
-- state_probabilities
-- delay_minutes_per_km
-- weather_summary
-- warnings
+```python
+from __future__ import annotations
 
-ForecastResult
-- sensor_id
-- sensor_name
-- points[]
-- generated_at
-- model_version
+from dataclasses import dataclass
+from datetime import datetime
+from enum import IntEnum
 ```
 
-Estos objetos serán `dataclasses` tipadas. El contrato será idéntico para respuestas reales y mocks.
+```python
+class TrafficState(IntEnum):
+    FLUIDO = 0
+    MODERADO = 1
+    DENSO = 2
+    RETENCION = 3
+```
+
+```python
+@dataclass(frozen=True)
+class WeatherSummary:
+    temperature_c: float | None
+    precipitation_mm: float | None
+    rain_mm: float | None
+    visibility_m: float | None
+    wind_speed_kmh: float | None
+    weather_code: int | None
+    source: str
+```
+
+```python
+@dataclass(frozen=True)
+class ForecastRequest:
+    sensor_id: int
+    start_at: datetime
+    end_at: datetime
+```
+
+```python
+@dataclass(frozen=True)
+class ForecastPoint:
+    timestamp: datetime
+    traffic_state: TrafficState
+    state_probabilities: dict[TrafficState, float]
+    delay_minutes_per_km: float
+    weather_summary: WeatherSummary
+    warnings: tuple[str, ...]
+```
+
+```python
+@dataclass(frozen=True)
+class ForecastResult:
+    sensor_id: int
+    sensor_name: str
+    points: tuple[ForecastPoint, ...]
+    generated_at: datetime
+    model_version: str
+```
+
+Las fechas serán conscientes de zona horaria. El contrato será idéntico para respuestas reales y mocks; los specs concretarán validación de rangos, redondeo y serialización.
 
 ## 5. Etiquetas de aprendizaje
 
@@ -196,19 +227,53 @@ Los valores ausentes no se clasificarán. Los valores fuera del dominio válido 
 
 ### 5.2 Demora por kilómetro
 
-`DelayLabeler` aprenderá una referencia por sensor usando únicamente entrenamiento:
+`DelayLabeler` aprenderá una velocidad de flujo libre por sensor usando únicamente las velocidades válidas de entrenamiento. Para un sensor \(s\), se define primero el conjunto:
 
-```text
-free_flow_speed_kmh[sensor_id] = percentil_90(vmed válido en train)
-```
+$$
+\mathcal{V}^{\text{train}}_{s}
+=
+\left\{
+v_{\text{med},i}
+\;\middle|\;
+i \in \text{train},\;
+s_i = s,\;
+v_{\text{med},i} > 0
+\right\}
+$$
 
-Con `reference_length_km = 1.0`:
+La velocidad de referencia es su percentil 90:
 
-```text
-current_minutes = 60 * reference_length_km / avg_speed_kmh
-free_flow_minutes = 60 * reference_length_km / free_flow_speed_kmh
-delay_minutes_per_km = max(0, current_minutes - free_flow_minutes)
-```
+$$
+v^{\text{ff}}_{s}
+=
+Q_{0.90}\!\left(\mathcal{V}^{\text{train}}_{s}\right)
+$$
+
+Para un tramo de referencia \(L\), los tiempos de recorrido a velocidad observada y en flujo libre son:
+
+$$
+T_{\text{obs}} = \frac{60\,L}{v_{\text{med}}},
+\qquad
+T_{\text{ff},s} = \frac{60\,L}{v^{\text{ff}}_{s}}
+$$
+
+La demora sobre ese tramo queda definida como:
+
+$$
+d_s = \max\!\left(0,\; T_{\text{obs}} - T_{\text{ff},s}\right)
+$$
+
+| Símbolo | Significado | Unidad |
+|---|---|---|
+| \(s\) | Sensor M30 analizado | — |
+| \(i\) | Observación horaria de entrenamiento | — |
+| \(v_{\text{med},i}\) | Velocidad media observada | km/h |
+| \(v^{\text{ff}}_{s}\) | Percentil 90 de velocidad del sensor en train | km/h |
+| \(L\) | Longitud del tramo de referencia | km |
+| \(T_{\text{obs}}\), \(T_{\text{ff},s}\) | Tiempos de recorrido observado y de referencia | min |
+| \(d_s\) | Demora sobre el tramo de referencia | min |
+
+El factor \(60\) convierte horas en minutos. En el MVP se fija \(L = 1\,\mathrm{km}\), por lo que \(d_s\) se expresa directamente como `min/km`.
 
 La etiqueta representa una **estimación derivada de velocidades puntuales**, no un tiempo de retraso medido sobre una ruta real completa.
 
@@ -263,23 +328,29 @@ Las clases anteriores son responsabilidades lógicas; durante los specs se podr�
 
 ### Metadatos obligatorios del artefacto
 
-```text
-model_version
-supported_sensor_ids
-training_time_range
-validation_time_range
-test_time_range
-timezone = Europe/Madrid
-traffic_temporal_resolution = 1h
-source_temporal_resolution = 15min
-reference_length_km = 1.0
-classification_thresholds
-feature_names
-dataset_fingerprint
-weather_sources
-dependency_versions
-classification_metrics
-regression_metrics
+```yaml
+model_version: string
+supported_sensor_ids: list[int]
+training_time_range: datetime_range
+validation_time_range: datetime_range
+test_time_range: datetime_range
+timezone: Europe/Madrid
+traffic_temporal_resolution: 1h
+source_temporal_resolution: 15min
+reference_length_km: 1.0
+classification_thresholds:
+  Fluido: "< 25"
+  Moderado: "25-49"
+  Denso: "50-74"
+  Retencion: ">= 75"
+feature_names: list[str]
+dataset_fingerprint: string
+weather_sources:
+  - madrid_municipal
+  - open_meteo
+dependency_versions: map[str, str]
+classification_metrics: map[str, float]
+regression_metrics: map[str, float]
 ```
 
 ## 8. Fuentes meteorológicas y comportamiento ante fallos
@@ -402,9 +473,9 @@ Tareas heredadas: 7.1, 7.2 y 7.3.
 
 **Hito H7:** versión final validada y documentación congelada.
 
-## 10. Specs propuestos
+## 10. Catálogo de especificaciones técnicas
 
-Tras aprobar este borrador se creará un paquete reducido de specs dentro de `docs/`, evitando documentos redundantes.
+Este apartado actúa como **índice maestro**: conserva la relación de specs, su alcance y la visión global de pruebas, riesgos y aceptación del MVP. Cada spec ampliará las reglas y criterios de aceptación de su área, sin sustituir ni eliminar estos apartados.
 
 | Spec | Contenido y criterios de aceptación |
 |---|---|
@@ -413,6 +484,8 @@ Tras aprobar este borrador se creará un paquete reducido de specs dentro de `do
 | `003-etiquetas-y-features.md` | Reglas de calidad, `carga`, demora `min/km`, calendario, partición temporal y prevención de fuga. |
 | `004-modelado-e-inferencia.md` | Baselines, balanceo, entrenamiento doble, métricas, artefacto, carga e inferencia. |
 | `005-servicio-tui-e-integracion.md` | Contrato real/mock, interacción, errores, pruebas E2E, rendimiento y empaquetado. |
+
+Cuando los documentos se redacten, cada nombre de archivo de esta tabla pasará a ser un enlace a su spec correspondiente dentro de `docs/`. Los documentos detallados no duplicarán la visión global; se limitarán a desarrollar su parte del diseño.
 
 Todos los specs incluirán:
 
@@ -429,6 +502,8 @@ Al formalizar los specs también habrá que actualizar `docs/AGENTS.md` para ref
 
 ## 11. Estrategia mínima de pruebas
 
+Esta estrategia transversal permanecerá en el plan. Los specs concretarán los casos de prueba de cada módulo, pero no sustituirán esta visión global.
+
 - **Unitarias:** normalización, filtros, unidades, agregación, etiquetas, fórmulas, calendario y caché.
 - **Contrato:** servicio real/mock, esquema de DataFrames y contenido del artefacto.
 - **Integración:** mes pequeño de tráfico + clima -> dataset -> predicción.
@@ -441,6 +516,8 @@ Cada fase termina con un checkpoint: resumen de archivos, pruebas ejecutadas, re
 
 ## 12. Riesgos y límites que deben quedar documentados
 
+Este inventario global de riesgos y limitaciones permanecerá en el plan. Los specs desarrollarán los controles y mitigaciones correspondientes sin eliminar el resumen.
+
 - Las observaciones municipales comienzan en 2019.
 - Entrenar con observaciones y consultar previsiones puede producir sesgo de fuente.
 - `visibility`, `weather_code` y `rain` no deben inventarse a partir de magnitudes municipales no equivalentes.
@@ -450,6 +527,8 @@ Cada fase termina con un checkpoint: resumen de archivos, pruebas ejecutadas, re
 - Los umbrales de macro F1 y MAE son objetivos de aceptación; no se afirmará que se cumplen hasta medirlos en test.
 
 ## 13. Definición de MVP terminado
+
+Esta definición global de aceptación permanecerá en el plan. Los criterios particulares de cada spec deberán ser coherentes con ella.
 
 El MVP estará terminado cuando un usuario pueda:
 
