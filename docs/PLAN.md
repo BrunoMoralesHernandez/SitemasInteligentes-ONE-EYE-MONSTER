@@ -479,13 +479,13 @@ Este apartado actúa como **índice maestro**: conserva la relación de specs, s
 
 | Spec | Contenido y criterios de aceptación |
 |---|---|
-| `001-arquitectura-y-contratos.md` | Diagrama final, clases, dependencias permitidas, DataFrames, DTOs y política de errores. |
-| `002-datos-madrid-y-meteorologia.md` | Inventario de archivos, normalización, agregación horaria, caché, fuentes, geolocalización, alineación y cobertura. |
-| `003-etiquetas-y-features.md` | Reglas de calidad, `carga`, demora `min/km`, calendario, partición temporal y prevención de fuga. |
-| `004-modelado-e-inferencia.md` | Baselines, balanceo, entrenamiento doble, métricas, artefacto, carga e inferencia. |
-| `005-servicio-tui-e-integracion.md` | Contrato real/mock, interacción, errores, pruebas E2E, rendimiento y empaquetado. |
+| [001-arquitectura-y-contratos.md](specs/001-arquitectura-y-contratos.md) | Diagrama final, clases, dependencias permitidas, DataFrames, DTOs y política de errores. |
+| [002-datos-madrid-y-meteorologia.md](specs/002-datos-madrid-y-meteorologia.md) | Inventario de archivos, normalización, agregación horaria, caché, fuentes, geolocalización, alineación y cobertura. |
+| [003-etiquetas-y-features.md](specs/003-etiquetas-y-features.md) | Reglas de calidad, `carga`, demora `min/km`, calendario, partición temporal y prevención de fuga. |
+| [004-modelado-e-inferencia.md](specs/004-modelado-e-inferencia.md) | Baselines, balanceo, entrenamiento doble, métricas, artefacto, carga e inferencia. |
+| [005-servicio-tui-e-integracion.md](specs/005-servicio-tui-e-integracion.md) | Contrato real/mock, interacción, errores, pruebas E2E, rendimiento y empaquetado. |
 
-Cuando los documentos se redacten, cada nombre de archivo de esta tabla pasará a ser un enlace a su spec correspondiente dentro de `docs/`. Los documentos detallados no duplicarán la visión global; se limitarán a desarrollar su parte del diseño.
+Los cinco documentos están en `docs/specs/` como borradores para revisión. Amplían su parte del diseño y no sustituyen la visión global de este plan.
 
 Todos los specs incluirán:
 
@@ -498,7 +498,7 @@ Todos los specs incluirán:
 7. Tests obligatorios.
 8. Criterios de aceptación verificables.
 
-Al formalizar los specs también habrá que actualizar `docs/AGENTS.md` para reflejar la fuente meteorológica híbrida y la unidad final `delay_minutes_per_km`, manteniendo la documentación coherente con este plan.
+`docs/AGENTS.md` refleja ya la fuente meteorológica híbrida y la unidad final `delay_minutes_per_km`. Si un spec cambia esas decisiones, ambos documentos deberán actualizarse juntos.
 
 ## 11. Estrategia mínima de pruebas
 

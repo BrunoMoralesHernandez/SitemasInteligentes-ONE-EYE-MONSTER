@@ -2,14 +2,14 @@
 
 ## 1. Visión del Proyecto
 
-Aplicación modular en Python para predecir atascos de tráfico y estimar tiempos de demora cruzando registros históricos de tráfico con datos meteorológicos (API de Open-Meteo). La interfaz principal es una aplicación de consola (TUI).
+Aplicación modular en Python para predecir atascos de tráfico y estimar tiempos de demora cruzando registros históricos de tráfico de Madrid con meteorología municipal y Open-Meteo. La interfaz principal es una aplicación de consola (TUI).
 
 ## 2. Stack Tecnológico
 
 - **Lenguaje:** Python 3.10+ (ejecutar siempre dentro del entorno virtual activo).
 - **Datos y Machine Learning:** `pandas`, `numpy`, `scikit-learn`, `xgboost`.
 - **Interfaz de Consola (TUI):** `rich` y `textual`.
-- **Fuentes de Datos:** API REST de Open-Meteo y datasets históricos locales (CSV/Parquet).
+- **Fuentes de Datos:** histórico oficial de tráfico y meteorología del Ayuntamiento de Madrid, API REST de Open-Meteo y datasets locales (CSV/Parquet).
 - **Testing y Calidad:** `pytest` para tests, `ruff` (o `flake8`/`black`) para formateo y linting.
 
 ## 3. Arquitectura del Repositorio
@@ -34,13 +34,13 @@ one-eye-monster/
 ## 4. Especificaciones de Datos y Modelado (Madrid)
 
 - **Filtrado inicial:** Descartar siempre registros con `error != 'N'`. Priorizar sensores con `tipo_elem == 'M30'` para disponer de `vmed` fiable además de `intensidad`, `ocupacion` y `carga`.
-- **Variables Meteorológicas (Open-Meteo):** `temperature_2m`, `precipitation`, `rain`, `visibility`, `wind_speed_10m`, `weather_code`.
+- **Meteorología híbrida:** observaciones municipales de Madrid como fuente histórica principal desde 2019; Open-Meteo (`temperature_2m`, `precipitation`, `rain`, `visibility`, `wind_speed_10m`, `weather_code`) como complemento histórico y como única previsión futura, siempre mediante caché.
 - **Etiquetas de Clasificación (desde `carga`):**
   - `0` — **Fluido**: `< 25`
   - `1` — **Moderado**: `25 – 49`
   - `2` — **Denso**: `50 – 74`
   - `3` — **Retención**: `>= 75`
-- **Variable de Regresión (Demora en minutos):** Calculada comparando el tiempo de recorrido a velocidad actual (`vmed`) frente al tiempo en flujo libre (percentil 90 histórico del sensor) sobre un tramo de referencia.
+- **Variable de Regresión (`delay_minutes_per_km`):** Calculada comparando el tiempo de recorrido a velocidad actual (`vmed`) frente al tiempo en flujo libre (percentil 90 del sensor, solo entrenamiento) sobre un tramo de referencia de 1 km. La salida se expresa en `min/km`.
 
 ## 5. Convenciones de Código
 
